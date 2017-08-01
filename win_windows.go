@@ -135,6 +135,9 @@ func RunMainLoop() {
 // there are now messages to be handled at the moment. You can use this like a
 // classical DOS era endless loop to run any real-time logic in between
 // messages.
+// Tip: if you do not want the game to use all your CPU, do some kind of
+// blocking operation in the function you pass. A simple time.Sleep(0) will do
+// the trick.
 func RunMainGameLoop(f func()) {
 	var msg w32.MSG
 	w32.PeekMessage(&msg, 0, 0, 0, w32.PM_NOREMOVE)
