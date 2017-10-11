@@ -17,6 +17,7 @@ func NewWindow(x, y, width, height int, className string, f MessageCallback) (w3
 		WndProc:   syscall.NewCallback(f),
 		Cursor:    w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW)),
 		ClassName: syscall.StringToUTF16Ptr(className),
+		Style:     w32.CS_OWNDC, // NOTE this is needed for OpenGL
 	}
 	atom := w32.RegisterClassEx(&class)
 	if atom == 0 {
@@ -154,4 +155,26 @@ func RunMainGameLoop(f func()) {
 // CloseWindow sends a WM_CLOSE event to the given window.
 func CloseWindow(window w32.HWND) {
 	w32.SendMessage(window, w32.WM_CLOSE, 0, 0)
+}
+
+// HideConsoleWindow hides the associated console window if it was created
+// because the ldflag H=windowsgui was not provided when building.
+func HideConsoleWindow() {
+	console := w32.GetConsoleWindow()
+	if console == 0 {
+		return // no console attached
+	}
+	// If this application is the process that created the console window, then
+	// this program was not compiled with the -H=windowsgui flag and on start-up
+	// it created a console along with the main application window. In this case
+	// hide the console window.
+	// See
+	// http://stackoverflow.com/questions/9009333/how-to-check-if-the-program-is-run-from-a-console
+	// and thanks to
+	// https://github.com/hajimehoshi
+	// for the tip.
+	_, consoleProcID := w32.GetWindowThreadProcessId(console)
+	if w32.GetCurrentProcessId() == consoleProcID {
+		w32.ShowWindowAsync(console, w32.SW_HIDE)
+	}
 }
