@@ -57,8 +57,9 @@ func NewWindow(opts WindowOptions, f MessageCallback) (w32.HWND, error) {
 		opts.Cursor = w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW))
 	}
 	if opts.WindowStyle == 0 {
-		opts.WindowStyle = w32.WS_OVERLAPPEDWINDOW | w32.WS_VISIBLE
+		opts.WindowStyle = w32.WS_OVERLAPPEDWINDOW
 	}
+	opts.WindowStyle |= w32.WS_VISIBLE
 
 	class := w32.WNDCLASSEX{
 		WndProc:   syscall.NewCallback(f),
