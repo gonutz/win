@@ -178,3 +178,36 @@ func HideConsoleWindow() {
 		w32.ShowWindowAsync(console, w32.SW_HIDE)
 	}
 }
+
+// HandlePanics is designed to be deferred as the first statement in an
+// application's main function. It calls recover to catch unhandled panics. The
+// current stack is output to standard output, to a file in the user's APPDATA
+// folder (which is then opened with the default .txt editor) and to a message
+// box that is shown to the user.
+func HandlePanics() {
+	if err := recover(); err != nil {
+		// in case of a panic, create a message with the current stack
+		msg := fmt.Sprintf("panic: %v\nstack:\n\n%s\n", err, debug.Stack())
+
+		// print it to stdout
+		fmt.Println(msg)
+
+		// write it to a log file
+		filename := filepath.Join(
+			os.Getenv("APPDATA"),
+			"ld40_log_"+time.Now().Format("2006_01_02__15_04_05")+".txt",
+		)
+		ioutil.WriteFile(filename, []byte(msg), 0777)
+
+		// open the log file with the default text viewer
+		exec.Command("cmd", "/C", filename).Start()
+
+		// pop up a message box
+		w32.MessageBox(
+			0,
+			msg,
+			"The program crashed",
+			w32.MB_OK|w32.MB_ICONERROR|w32.MB_TOPMOST,
+		)
+	}
+}
