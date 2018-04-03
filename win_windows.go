@@ -10,21 +10,61 @@ import (
 	"runtime/debug"
 	"syscall"
 	"time"
+	"unicode/utf16"
 
 	"github.com/gonutz/w32"
 )
 
 type MessageCallback func(window w32.HWND, msg uint32, w, l uintptr) uintptr
 
-// NewWindow creates a window of the given size with a border and a title bar
-// with an icon, title text, minimize, maximize and close buttons (style
-// WS_OVERLAPPEDWINDOW).
-func NewWindow(x, y, width, height int, className string, f MessageCallback) (w32.HWND, error) {
+type WindowOptions struct {
+	X, Y          int
+	Width, Height int
+	ClassName     string
+	Title         string
+	Cursor        w32.HCURSOR
+	// ClassStyle should include w32.CS_OWNDC for OpenGL
+	ClassStyle  uint32
+	WindowStyle uint
+}
+
+func DefaultOptions() WindowOptions {
+	return WindowOptions{
+		X:           w32.CW_USEDEFAULT,
+		Y:           w32.CW_USEDEFAULT,
+		Width:       w32.CW_USEDEFAULT,
+		Height:      w32.CW_USEDEFAULT,
+		ClassName:   "window_class",
+		Title:       "",
+		Cursor:      w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW)),
+		ClassStyle:  0,
+		WindowStyle: w32.WS_OVERLAPPEDWINDOW | w32.WS_VISIBLE,
+	}
+}
+
+// NewWindow creates a window.
+func NewWindow(opts WindowOptions, f MessageCallback) (w32.HWND, error) {
+	if opts.Width == 0 {
+		opts.Width = 640
+	}
+	if opts.Height == 0 {
+		opts.Height = 480
+	}
+	if opts.ClassName == "" {
+		opts.ClassName = "window_class"
+	}
+	if opts.Cursor == 0 {
+		opts.Cursor = w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW))
+	}
+	if opts.WindowStyle == 0 {
+		opts.WindowStyle = w32.WS_OVERLAPPEDWINDOW | w32.WS_VISIBLE
+	}
+
 	class := w32.WNDCLASSEX{
 		WndProc:   syscall.NewCallback(f),
-		Cursor:    w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW)),
-		ClassName: syscall.StringToUTF16Ptr(className),
-		Style:     w32.CS_OWNDC, // NOTE this is needed for OpenGL
+		Cursor:    opts.Cursor,
+		ClassName: syscall.StringToUTF16Ptr(opts.ClassName),
+		Style:     opts.ClassStyle,
 	}
 	atom := w32.RegisterClassEx(&class)
 	if atom == 0 {
@@ -32,10 +72,10 @@ func NewWindow(x, y, width, height int, className string, f MessageCallback) (w3
 	}
 	window := w32.CreateWindowEx(
 		0,
-		syscall.StringToUTF16Ptr(className),
-		nil,
-		w32.WS_OVERLAPPEDWINDOW|w32.WS_VISIBLE,
-		x, y, width, height,
+		syscall.StringToUTF16Ptr(opts.ClassName),
+		syscall.StringToUTF16Ptr(opts.Title),
+		opts.WindowStyle,
+		opts.X, opts.Y, opts.Width, opts.Height,
 		0, 0, 0, nil,
 	)
 	if window == 0 {
@@ -136,7 +176,7 @@ func RunMainLoop() {
 	}
 }
 
-// RunMainGameLoop starts the applications window message handling. It loops
+// RunMainGameLoop starts the application's window message handling. It loops
 // until the window is closed. Messages are forwarded to the handler function
 // that was passed to NewWindow.
 // In contrast to RunMainLoop, RunMainGameLoop calls the given function whenever
@@ -218,4 +258,146 @@ func HandlePanics(id string) {
 			w32.MB_OK|w32.MB_ICONERROR|w32.MB_TOPMOST,
 		)
 	}
+}
+
+func (m *MessageHandler) Callback(window w32.HWND, msg uint32, w, l uintptr) uintptr {
+	if msg == w32.WM_TIMER && m.OnTimer != nil {
+		m.OnTimer(w)
+		return 0
+	} else if msg == w32.WM_KEYDOWN && m.OnKeyDown != nil {
+		m.OnKeyDown(w, KeyOptions(l))
+		return 0
+	} else if msg == w32.WM_KEYUP && m.OnKeyUp != nil {
+		m.OnKeyDown(w, KeyOptions(l))
+		return 0
+	} else if msg == w32.WM_CHAR && m.OnChar != nil {
+		r := utf16.Decode([]uint16{uint16(w)})[0]
+		m.OnChar(r)
+		return 0
+	} else if msg == w32.WM_MOUSEMOVE && m.OnMouseMove != nil {
+		x := int((uint(l)) & 0xFFFF)
+		y := int((uint(l) >> 16) & 0xFFFF)
+		m.OnMouseMove(x, y, MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_SIZE && m.OnSize != nil {
+		w := int((uint(l)) & 0xFFFF)
+		h := int((uint(l) >> 16) & 0xFFFF)
+		m.OnSize(w, h)
+		return 0
+	} else if msg == w32.WM_MOVE && m.OnMove != nil {
+		x := int((uint(l)) & 0xFFFF)
+		y := int((uint(l) >> 16) & 0xFFFF)
+		m.OnMove(x, y)
+		return 0
+	} else if msg == w32.WM_ACTIVATE && m.OnActivate != nil {
+		if w != 0 && m.OnActivate != nil {
+			m.OnActivate()
+		}
+		if w == 0 && m.OnDeactivate != nil {
+			m.OnDeactivate()
+		}
+		return 0
+	} else if msg == w32.WM_LBUTTONDOWN && m.OnLeftMouseDown != nil {
+		m.OnLeftMouseDown(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_RBUTTONDOWN && m.OnRightMouseDown != nil {
+		m.OnRightMouseDown(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_MBUTTONDOWN && m.OnMiddleMouseDown != nil {
+		m.OnMiddleMouseDown(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_LBUTTONUP && m.OnLeftMouseUp != nil {
+		m.OnLeftMouseUp(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_RBUTTONUP && m.OnRightMouseUp != nil {
+		m.OnRightMouseUp(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_MBUTTONUP && m.OnMiddleMouseUp != nil {
+		m.OnMiddleMouseUp(mouseX(l), mouseY(l), MouseOptions(w))
+		return 0
+	} else if msg == w32.WM_MOUSEWHEEL && m.OnMouseWheel != nil {
+		delta := float32(int16((w>>16)&0xFFFF)) / 120.0
+		m.OnMouseWheel(delta, mouseX(l), mouseY(l), MouseOptions(w&0xFFFF))
+		return 0
+	} else if msg == w32.WM_DESTROY {
+		w32.PostQuitMessage(0)
+		return 0
+	} else {
+		return w32.DefWindowProc(window, msg, w, l)
+	}
+}
+
+func mouseX(l uintptr) int {
+	return int(int16(l & 0xFFFF))
+}
+
+func mouseY(l uintptr) int {
+	return int(int16((l >> 16) & 0xFFFF))
+}
+
+type MessageHandler struct {
+	OnKeyDown         func(key uintptr, options KeyOptions)
+	OnKeyUp           func(key uintptr, options KeyOptions)
+	OnMouseMove       func(x, y int, options MouseOptions)
+	OnMouseWheel      func(forward float32, x, y int, options MouseOptions)
+	OnLeftMouseDown   func(x, y int, options MouseOptions)
+	OnRightMouseDown  func(x, y int, options MouseOptions)
+	OnMiddleMouseDown func(x, y int, options MouseOptions)
+	OnLeftMouseUp     func(x, y int, options MouseOptions)
+	OnRightMouseUp    func(x, y int, options MouseOptions)
+	OnMiddleMouseUp   func(x, y int, options MouseOptions)
+	OnChar            func(r rune)
+	OnSize            func(width, height int)
+	OnMove            func(x, y int)
+	OnActivate        func()
+	OnDeactivate      func()
+	OnTimer           func(id uintptr)
+}
+
+type KeyOptions uintptr
+
+func (o KeyOptions) RepeatCount() int {
+	return int(o & 0xFFFF)
+}
+
+func (o KeyOptions) ScanCode() int {
+	return int((o >> 16) & 0xFF)
+}
+
+func (o KeyOptions) IsExtended() bool {
+	return o&(1<<24) != 0
+}
+
+func (o KeyOptions) WasDown() bool {
+	return o&(1<<30) != 0
+}
+
+type MouseOptions uintptr
+
+func (o MouseOptions) ControlDown() bool {
+	return o&w32.MK_CONTROL != 0
+}
+
+func (o MouseOptions) LButtonDown() bool {
+	return o&w32.MK_LBUTTON != 0
+}
+
+func (o MouseOptions) MButtonDown() bool {
+	return o&w32.MK_MBUTTON != 0
+}
+
+func (o MouseOptions) RButtonDown() bool {
+	return o&w32.MK_RBUTTON != 0
+}
+
+func (o MouseOptions) ShiftDown() bool {
+	return o&w32.MK_SHIFT != 0
+}
+
+func (o MouseOptions) XButton1Down() bool {
+	return o&w32.MK_XBUTTON1 != 0
+}
+
+func (o MouseOptions) XButton2Down() bool {
+	return o&w32.MK_XBUTTON2 != 0
 }
