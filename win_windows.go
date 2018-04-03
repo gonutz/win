@@ -2,7 +2,14 @@ package win
 
 import (
 	"errors"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime/debug"
 	"syscall"
+	"time"
 
 	"github.com/gonutz/w32"
 )
@@ -184,7 +191,8 @@ func HideConsoleWindow() {
 // current stack is output to standard output, to a file in the user's APPDATA
 // folder (which is then opened with the default .txt editor) and to a message
 // box that is shown to the user.
-func HandlePanics() {
+// The id is used in the log file name.
+func HandlePanics(id string) {
 	if err := recover(); err != nil {
 		// in case of a panic, create a message with the current stack
 		msg := fmt.Sprintf("panic: %v\nstack:\n\n%s\n", err, debug.Stack())
@@ -195,7 +203,7 @@ func HandlePanics() {
 		// write it to a log file
 		filename := filepath.Join(
 			os.Getenv("APPDATA"),
-			"ld40_log_"+time.Now().Format("2006_01_02__15_04_05")+".txt",
+			id+"_panic_log_"+time.Now().Format("2006_01_02__15_04_05")+".txt",
 		)
 		ioutil.WriteFile(filename, []byte(msg), 0777)
 
