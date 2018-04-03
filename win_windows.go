@@ -260,6 +260,9 @@ func HandlePanics(id string) {
 	}
 }
 
+// Callback can be used as the callback function for a window. It will translate
+// common messages into nice function calls. No need to handle generic W and L
+// parameters yourself.
 func (m *MessageHandler) Callback(window w32.HWND, msg uint32, w, l uintptr) uintptr {
 	if msg == w32.WM_TIMER && m.OnTimer != nil {
 		m.OnTimer(w)
@@ -335,6 +338,10 @@ func mouseY(l uintptr) int {
 	return int(int16((l >> 16) & 0xFFFF))
 }
 
+// MessageHandler translates common Windows messages for you instead of
+// providing generic W and L parameters. Set the handlers that you want and
+// leave the rest at nil. Use the MessageHandler's Callback function as the
+// callback for a window.
 type MessageHandler struct {
 	OnKeyDown         func(key uintptr, options KeyOptions)
 	OnKeyUp           func(key uintptr, options KeyOptions)
