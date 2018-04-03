@@ -409,3 +409,11 @@ func (o MouseOptions) XButton1Down() bool {
 func (o MouseOptions) XButton2Down() bool {
 	return o&w32.MK_XBUTTON2 != 0
 }
+
+func ClientSize(window w32.HWND) (w, h int) {
+	r := w32.GetClientRect(window)
+	if r == nil {
+		return 0, 0
+	}
+	return int(r.Width()), int(r.Height())
+}
