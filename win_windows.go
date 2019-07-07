@@ -15,8 +15,6 @@ import (
 	"github.com/gonutz/w32"
 )
 
-type MessageCallback func(window w32.HWND, msg uint32, w, l uintptr) uintptr
-
 type WindowOptions struct {
 	X, Y          int
 	Width, Height int
@@ -26,7 +24,10 @@ type WindowOptions struct {
 	// ClassStyle should include w32.CS_OWNDC for OpenGL
 	ClassStyle  uint32
 	WindowStyle uint
+	Background  w32.HBRUSH
 }
+
+type MessageCallback func(window w32.HWND, msg uint32, w, l uintptr) uintptr
 
 func DefaultOptions() WindowOptions {
 	return WindowOptions{
@@ -39,6 +40,7 @@ func DefaultOptions() WindowOptions {
 		Cursor:      w32.LoadCursor(0, w32.MakeIntResource(w32.IDC_ARROW)),
 		ClassStyle:  0,
 		WindowStyle: w32.WS_OVERLAPPEDWINDOW | w32.WS_VISIBLE,
+		Background:  0,
 	}
 }
 
@@ -62,10 +64,11 @@ func NewWindow(opts WindowOptions, f MessageCallback) (w32.HWND, error) {
 	opts.WindowStyle |= w32.WS_VISIBLE
 
 	class := w32.WNDCLASSEX{
-		WndProc:   syscall.NewCallback(f),
-		Cursor:    opts.Cursor,
-		ClassName: syscall.StringToUTF16Ptr(opts.ClassName),
-		Style:     opts.ClassStyle,
+		Background: opts.Background,
+		WndProc:    syscall.NewCallback(f),
+		Cursor:     opts.Cursor,
+		ClassName:  syscall.StringToUTF16Ptr(opts.ClassName),
+		Style:      opts.ClassStyle,
 	}
 	atom := w32.RegisterClassEx(&class)
 	if atom == 0 {
@@ -326,6 +329,11 @@ func (m *MessageHandler) Callback(window w32.HWND, msg uint32, w, l uintptr) uin
 	} else if msg == w32.WM_DESTROY {
 		w32.PostQuitMessage(0)
 		return 0
+	} else if m.OnOther != nil {
+		if !m.OnOther(msg, w, l) {
+			return w32.DefWindowProc(window, msg, w, l)
+		}
+		return 0
 	} else {
 		return w32.DefWindowProc(window, msg, w, l)
 	}
@@ -360,6 +368,7 @@ type MessageHandler struct {
 	OnActivate        func()
 	OnDeactivate      func()
 	OnTimer           func(id uintptr)
+	OnOther           func(msg uint32, w, l uintptr) (handled bool)
 }
 
 type KeyOptions uintptr
